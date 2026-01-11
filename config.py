@@ -10,4 +10,5 @@ CHAT_ID = int(os.getenv("CHAT_ID"))
 
 IST = pytz.timezone("Asia/Kolkata")
 
-WORD_FILE = r"C:\Users\malip\OneDrive\Documents\placepment\placepment plan.docx"
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+WORD_FILE = os.path.join(BASE_DIR, "placement_plan.docx")
