@@ -10,31 +10,77 @@ from config import WORD_FILE, CHAT_ID, IST
 import matplotlib.pyplot as plt
 from collections import Counter
 
-# ================= INTERNAL HELPERS =================
+def job_wrapper(async_func):
+    async def wrapped(context):
+        try:
+            await async_func(context)
+        except Exception as e:
+            pass
+    return wrapped
+# ================= INTERNAL HELPERS
 def _get_table():
     doc = Document(WORD_FILE)
-    table = doc.tables[0]
+    REQUIRED = {"date", "status", "hard topic", "c topic", "java topic"}
 
-    headers = {}
-    for row in table.rows:
-        cells = [c.text.strip().lower() for c in row.cells]
-        if "date" in cells and "status" in cells:
-            for i, h in enumerate(cells):
-                headers[h] = i
-            break
+    for table in doc.tables:
+        for row in table.rows:
+            cells = [c.text.strip().lower() for c in row.cells]
+            if REQUIRED.issubset(set(cells)):
+                headers = {
+                    c.text.strip().lower(): i
+                    for i, c in enumerate(row.cells)
+                }
+                return table, headers
 
-    required = ["date", "status", "hard topic"]
-    for r in required:
-        if r not in headers:
-            raise ValueError(f"Missing column: {r}")
+    raise ValueError("Required table not found")
 
-    return table, headers
+def _get_all_rows():
+    doc = Document(WORD_FILE)
+    all_rows = []
 
+    REQUIRED = {"date", "status", "hard topic", "c topic", "java topic"}
+
+    for table in doc.tables:
+        headers = None
+        header_idx = None
+
+        for i, row in enumerate(table.rows):
+            cells = [c.text.strip().lower() for c in row.cells if c.text.strip()]
+            if REQUIRED.issubset(set(cells)):
+                headers = {
+                    c.text.strip().lower(): idx
+                    for idx, c in enumerate(row.cells)
+                    if c.text.strip()
+                }
+                header_idx = i
+                break
+
+        if not headers:
+            continue
+
+        for row in table.rows[header_idx + 1:]:
+            # skip empty rows
+            if not row.cells[headers["date"]].text.strip():
+                continue
+            all_rows.append((row, headers))
+
+    if not all_rows:
+        raise ValueError("No tables with required columns found.")
+
+    return all_rows
 
 def _parse_date(row, headers):
+    text = row.cells[headers["date"]].text
+
+    if not text:
+        return None
+
+    # Clean Word formatting junk
+    text = text.strip().replace("\n", "").replace("\xa0", "")
+
     try:
         return datetime.strptime(
-            row.cells[headers["date"]].text.strip(), "%Y-%m-%d"
+            text[:10], "%Y-%m-%d"
         ).date()
     except:
         return None
@@ -42,53 +88,84 @@ def _parse_date(row, headers):
 
 # ================= PDF CORE =================
 def generate_pdf(start_date, end_date, title):
-    table, headers = _get_table()
-
+    all_rows = _get_all_rows()
     pdf_path = f"{title.replace(' ', '_')}.pdf"
     c = canvas.Canvas(pdf_path, pagesize=A4)
     width, height = A4
 
+    # Title
     y = height - 2 * cm
     c.setFont("Helvetica-Bold", 14)
     c.drawString(2 * cm, y, title)
     y -= 1.5 * cm
+
+    # Table header
+    c.setFont("Helvetica-Bold", 10)
+    c.setFillColor(colors.black)
+    c.drawString(2 * cm, y, "Date")
+    c.drawString(5 * cm, y, "Status")
+    c.drawString(7 * cm, y, "Hard Topic")
+    c.drawString(11 * cm, y, "C Topic")
+    c.drawString(15 * cm, y, "Java Topic")
+    y -= 1 * cm
+
     c.setFont("Helvetica", 10)
 
-    for row in table.rows:
+    for row, headers in all_rows:
         d = _parse_date(row, headers)
         if not d or not (start_date <= d <= end_date):
             continue
 
         raw_status = row.cells[headers["status"]].text.strip()
-        status="DONE" if "✅"in raw_status else "MISS" if "❌" in raw_status else "-"
+        status = "DONE" if "✅" in raw_status else "MISS" if "❌" in raw_status else "-"
+
         hard = row.cells[headers["hard topic"]].text.strip() or "None"
-        x =2* cm
-        
+        c_topic = row.cells[headers["c topic"]].text.strip() or "-"
+        java_topic = row.cells[headers["java topic"]].text.strip() or "-"
+
+        # Column X positions
+        x_date = 2 * cm
+        x_status = 5 * cm
+        x_hard = 7 * cm
+        x_c = 11 * cm
+        x_java = 15 * cm
+
+        # Date
         c.setFillColor(colors.black)
-        c.drawString(x, y, f"{d} | ")
-        x += c.stringWidth(f"{d} | ", "Helvetica", 10)
-        
+        c.drawString(x_date, y, str(d))
+
+        # Status (ONLY this colored)
         if status == "DONE":
             c.setFillColor(colors.green)
         elif status == "MISS":
             c.setFillColor(colors.red)
         else:
             c.setFillColor(colors.black)
-        c.drawString(x, y, status)
-        x += c.stringWidth(status, "Helvetica", 10)
+        c.drawString(x_status, y, status)
 
         # Rest (black)
         c.setFillColor(colors.black)
-        c.drawString(x, y, f" | Hard: {hard}")
+        c.drawString(x_hard, y, hard[:25])
+        c.drawString(x_c, y, c_topic[:25])
+        c.drawString(x_java, y, java_topic[:25])
+
         y -= 0.8 * cm
 
+        # Page break
         if y < 2 * cm:
             c.showPage()
             y = height - 2 * cm
+            c.setFont("Helvetica-Bold", 10)
+            c.drawString(2 * cm, y, "Date")
+            c.drawString(5 * cm, y, "Status")
+            c.drawString(7 * cm, y, "Hard Topic")
+            c.drawString(11 * cm, y, "C Topic")
+            c.drawString(15 * cm, y, "Java Topic")
+            y -= 1 * cm
+            c.setFont("Helvetica", 10)
 
     c.save()
     return pdf_path
-
 
 # ================= WEEKLY PDF =================
 async def send_weekly_report(context):
@@ -155,7 +232,7 @@ async def send_sunday_summary(context):
 
 
 # ================= GRAPHS =================
-def _plot_and_send(x, y, title, file, caption, context):
+async def _plot_and_send(x, y, title, file, caption, context):
     plt.figure()
     plt.plot(x, y, marker="o")
     plt.yticks([0, 1], ["❌", "✅"])
@@ -164,10 +241,11 @@ def _plot_and_send(x, y, title, file, caption, context):
     plt.savefig(file)
     plt.close()
 
-    return context.bot.send_photo(
-        chat_id=CHAT_ID, photo=open(file, "rb"), caption=caption
+    await context.bot.send_photo(
+    chat_id=CHAT_ID,
+    photo=open(file, "rb"),
+    caption=caption
     )
-
 
 async def send_weekly_graph(context):
     today = datetime.now(IST).date()
@@ -228,12 +306,17 @@ async def send_consistency_score(context):
             if "✅" in s:
                 done += 1
 
-    if total:
-        pct = round((done / total) * 100, 2)
+    if not total:
         await context.bot.send_message(
-            chat_id=CHAT_ID, text=f"📈 *Consistency*: {pct}%", parse_mode="Markdown"
+            chat_id=CHAT_ID,
+            text="📈 *Consistency*: No data yet",
+            parse_mode="Markdown"
         )
-
+        return
+    pct = round((done / total) * 100, 2)
+    await context.bot.send_message(
+        chat_id=CHAT_ID, text=f"📈 *Consistency*: {pct}%", parse_mode="Markdown"
+    )
 
 # ================= BEST STREAK =================
 async def send_best_streak(context):
@@ -266,13 +349,17 @@ async def send_study_score(context):
             if "✅" in s:
                 score += max(10 - (2 if h != "none" else 0), 0)
 
-    if max_score:
-        pct = round((score / max_score) * 100, 2)
+    if not max_score:
         await context.bot.send_message(
-            chat_id=CHAT_ID, text=f"🧮 *Study Score*: {pct}%", parse_mode="Markdown"
+            chat_id=CHAT_ID,
+            text="🧮 *Study Score*: No data yet",
+            parse_mode="Markdown"
         )
-
-
+        return
+    pct = round((score / max_score) * 100, 2)
+    await context.bot.send_message(
+        chat_id=CHAT_ID, text=f"🧮 *Study Score*: {pct}%", parse_mode="Markdown"
+    )       
 # ================= HARD TOPIC ANALYTICS =================
 async def send_hard_topic_analytics(context):
     table, headers = _get_table()
@@ -341,6 +428,11 @@ async def send_ai_motivation(context):
                 score += max(10 - (2 if h != "none" else 0), 0)
 
     if not max_score:
+        await context.bot.send_message(
+            chat_id=CHAT_ID,
+            text="🤖 *AI Motivation*\n\nNo study data yet. Let’s start strong 💪",
+            parse_mode="Markdown"
+        )
         return
 
     pct = (score / max_score) * 100
@@ -366,19 +458,38 @@ async def report_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     pdf = generate_pdf(start, end, f"Study Report {start} to {end}")
     await update.message.reply_document(open(pdf, "rb"))
 
+# ================= TUESDAY MANUAL WEEKLY =================
+async def manual_weekly_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    # Tuesday = 1
+    if datetime.now(IST).weekday() != 6:
+        await update.message.reply_text(
+            "❌ Manual weekly reports are only available on Sunday."
+        )
+        return
+    await send_weekly_report(context)
+    await send_sunday_summary(context)
+    await send_weekly_graph(context)
+    await send_consistency_score(context)
+    await send_best_streak(context)
+    await send_study_score(context)
+    await send_hard_topic_analytics(context)
+    await send_ai_motivation(context)
+    await update.message.reply_text("✅ Weekly reports sent manually.")
 
 # ================= REGISTER =================
 def register_reports(app):
     app.add_handler(CommandHandler("report", report_command))
+    app.add_handler(CommandHandler("weekly", manual_weekly_command))  # 👈 ADD THIS
+    SUNDAY = (6,)
 
-    app.job_queue.run_daily(send_weekly_report, dt_time(21, 0), days=(6,))
-    app.job_queue.run_daily(send_sunday_summary, dt_time(21, 2), days=(6,))
-    app.job_queue.run_daily(send_weekly_graph, dt_time(21, 4), days=(6,))
-    app.job_queue.run_daily(send_consistency_score, dt_time(21, 5), days=(6,))
-    app.job_queue.run_daily(send_best_streak, dt_time(21, 6), days=(6,))
-    app.job_queue.run_daily(send_study_score, dt_time(21, 8), days=(6,))
-    app.job_queue.run_daily(send_hard_topic_analytics, dt_time(21, 10), days=(6,))
-    app.job_queue.run_daily(send_ai_motivation, dt_time(21, 12))
-    app.job_queue.run_daily(monthly_checker, dt_time(21, 14))
-    app.job_queue.run_daily(send_monthly_graph, dt_time(21, 15))
-    app.job_queue.run_daily(send_month_comparison, dt_time(21, 16))
+    app.job_queue.run_daily(job_wrapper(send_weekly_report), dt_time(22,40, tzinfo=IST), days=SUNDAY)
+    app.job_queue.run_daily(send_sunday_summary,       dt_time(22, 6, tzinfo=IST), days=SUNDAY)
+    app.job_queue.run_daily(send_weekly_graph,         dt_time(22, 7, tzinfo=IST), days=SUNDAY)
+    app.job_queue.run_daily(send_consistency_score,    dt_time(22, 8, tzinfo=IST), days=SUNDAY)
+    app.job_queue.run_daily(send_best_streak,          dt_time(22, 9, tzinfo=IST), days=SUNDAY)
+    app.job_queue.run_daily(send_study_score,          dt_time(22,10, tzinfo=IST), days=SUNDAY)
+    app.job_queue.run_daily(send_hard_topic_analytics, dt_time(22,11, tzinfo=IST), days=SUNDAY)
+    app.job_queue.run_daily(send_ai_motivation,        dt_time(22,12, tzinfo=IST), days=SUNDAY)
+    app.job_queue.run_daily(monthly_checker,           dt_time(22,13, tzinfo=IST), days=SUNDAY)
+    app.job_queue.run_daily(send_monthly_graph,        dt_time(22,14, tzinfo=IST), days=SUNDAY)
+    app.job_queue.run_daily(send_month_comparison,     dt_time(22,15, tzinfo=IST), days=SUNDAY)

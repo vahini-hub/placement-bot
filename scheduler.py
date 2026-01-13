@@ -20,7 +20,7 @@ from telegram.ext import (
 from reports import register_reports
 from config import WORD_FILE, CHAT_ID, IST,BOT_TOKEN
 
-START_DATE = "2026-01-02"
+START_DATE = "2026-01-12"
 evening_RETRY_JOB = "evening_retry"
 HARD_TOPIC_TIMEOUT_JOB = "hard_topic_timeout"
 
@@ -32,13 +32,21 @@ def get_day_number():
         return None
     return (today - start).days + 1
 
+def get_table_and_row(doc, day):
+    table_index = (day - 1) // 7
+    row_index = ((day - 1) % 7) + 1
+    if table_index >= len(doc.tables):
+        return None, None
+    return doc.tables[table_index], row_index
+
+
 def update_status_in_word(symbol):
     day = get_day_number()
     if day is None:
         return
 
     doc = Document(WORD_FILE)
-    table = doc.tables[0]
+    table, row = get_table_and_row(doc, day)
 
     status_col = None
     for i, cell in enumerate(table.rows[0].cells):
@@ -46,12 +54,12 @@ def update_status_in_word(symbol):
             status_col = i
             break
 
-    if status_col is None or day >= len(table.rows):
+    if status_col is None or row >= len(table.rows):
         return
 
-    table.rows[day].cells[status_col].text = symbol
+    table.rows[row].cells[status_col].text = symbol
     doc.save(WORD_FILE)
-
+    print(f"✅ Status updated: Day {day}")
 # ===== evening =====
 async def evening_buttons(context: ContextTypes.DEFAULT_TYPE):
     retries = context.bot_data.get("evening_retry_count", 0)
@@ -141,8 +149,9 @@ async def hard_topic_timeout(context: ContextTypes.DEFAULT_TYPE):
     doc = Document(WORD_FILE)
     if not doc.tables:
         return
-
-    table = doc.tables[0]
+    table, row = get_table_and_row(doc, day)
+    if table is None:
+        return
 
     hard_col = None
     for i, cell in enumerate(table.rows[0].cells):
@@ -150,8 +159,8 @@ async def hard_topic_timeout(context: ContextTypes.DEFAULT_TYPE):
             hard_col = i
             break
 
-    if hard_col is not None and day < len(table.rows):
-        table.rows[day].cells[hard_col].text = "None"
+    if hard_col is not None and row < len(table.rows):
+        table.rows[row].cells[hard_col].text = "None"
         doc.save(WORD_FILE)
 
     context.user_data["awaiting_hard_topic"] = False
@@ -172,7 +181,9 @@ async def hard_topic_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
         return
 
     doc = Document(WORD_FILE)
-    table = doc.tables[0]
+    table, row = get_table_and_row(doc, day)
+    if table is None:
+        return
 
     hard_col = None
     for i, cell in enumerate(table.rows[0].cells):
@@ -180,8 +191,8 @@ async def hard_topic_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
             hard_col = i
             break
 
-    if hard_col is not None and day < len(table.rows):
-        table.rows[day].cells[hard_col].text = topic
+    if hard_col is not None and row < len(table.rows):
+        table.rows[row].cells[hard_col].text = topic
         doc.save(WORD_FILE)
 
     context.user_data["awaiting_hard_topic"] = False
@@ -194,21 +205,26 @@ app.add_handler(CallbackQueryHandler(button_callback))
 app.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, hard_topic_handler))
 register_reports(app)
 # IST timezone
-app.job_queue.scheduler.configure(timezone=IST)
+#app.job_queue.scheduler.configure(timezone=IST)
 
 # ===== SCHEDULE =====
 # evening 6:25 PM
+ALL_DAYS = (0, 1, 2, 3, 4, 5, 6)
 app.job_queue.run_daily(
     evening_buttons,
-    time=dt_time(hour=17, minute=12)
+    time=dt_time(hour=17, minute=30,tzinfo=IST),
+    days=ALL_DAYS
+
 )
 
 # Night 9:05 PM
+ALL_DAYS = (0, 1, 2, 3, 4, 5, 6)
 app.job_queue.run_daily(
     night_buttons,
-    time=dt_time(hour=17, minute=14)
-)
+    time=dt_time(hour=22, minute=30,tzinfo=IST),
+    days=ALL_DAYS
 
+)
 # ===== START =====
 print("Bot running...")
 app.run_polling(drop_pending_updates=True)
