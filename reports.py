@@ -5,7 +5,7 @@ from reportlab.lib.pagesizes import A4
 from reportlab.pdfgen import canvas
 from reportlab.lib.units import cm
 from telegram import Update
-from telegram.ext import ContextTypes, CommandHandler
+from telegram.ext import ContextTypes, CommandHandler,JobQueue
 from config import WORD_FILE, CHAT_ID, IST
 import matplotlib.pyplot as plt
 from collections import Counter
@@ -497,5 +497,5 @@ def register_reports(app):
     app.job_queue.run_daily(
     monday_bundle,
     dt_time(20, 52, tzinfo=IST), 
-    days=(6,), 
+    days=(JobQueue.SUNDAY,), 
     )
