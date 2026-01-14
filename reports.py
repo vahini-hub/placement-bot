@@ -490,7 +490,10 @@ async def monday_bundle(context):
 # ================= REGISTER =================
 def register_reports(app):
     app.add_handler(CommandHandler("report", report_command))
-    app.add_handler(CommandHandler("weekly", manual_weekly_command))  # 👈 ADD THIS
+    app.add_handler(CommandHandler("weekly", manual_weekly_command))
+    if app.job_queue is None:
+        print("❌ JobQueue not available")
+        return
     app.job_queue.run_daily(
     monday_bundle,
     dt_time(20, 52, tzinfo=IST), 
