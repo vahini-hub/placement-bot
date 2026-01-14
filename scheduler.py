@@ -10,7 +10,6 @@ socket.getaddrinfo = lambda *args, **kwargs: [
 import os
 from datetime import datetime, time as dt_time
 from docx import Document
-import pytz
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
 from telegram.ext import (
     ApplicationBuilder,

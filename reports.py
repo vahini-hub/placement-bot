@@ -475,21 +475,24 @@ async def manual_weekly_command(update: Update, context: ContextTypes.DEFAULT_TY
     await send_hard_topic_analytics(context)
     await send_ai_motivation(context)
     await update.message.reply_text("✅ Weekly reports sent manually.")
+async def monday_bundle(context):
+    await send_weekly_report(context)
+    await send_sunday_summary(context)
+    await send_weekly_graph(context)
+    await send_consistency_score(context)
+    await send_best_streak(context)
+    await send_study_score(context)
+    await send_hard_topic_analytics(context)
+    await send_ai_motivation(context)
+    await send_monthly_graph(context)
+    await send_month_comparison(context)
 
 # ================= REGISTER =================
 def register_reports(app):
     app.add_handler(CommandHandler("report", report_command))
     app.add_handler(CommandHandler("weekly", manual_weekly_command))  # 👈 ADD THIS
-    SUNDAY = (6,)
-
-    app.job_queue.run_daily(job_wrapper(send_weekly_report), dt_time(22,40, tzinfo=IST), days=SUNDAY)
-    app.job_queue.run_daily(send_sunday_summary,       dt_time(22, 6, tzinfo=IST), days=SUNDAY)
-    app.job_queue.run_daily(send_weekly_graph,         dt_time(22, 7, tzinfo=IST), days=SUNDAY)
-    app.job_queue.run_daily(send_consistency_score,    dt_time(22, 8, tzinfo=IST), days=SUNDAY)
-    app.job_queue.run_daily(send_best_streak,          dt_time(22, 9, tzinfo=IST), days=SUNDAY)
-    app.job_queue.run_daily(send_study_score,          dt_time(22,10, tzinfo=IST), days=SUNDAY)
-    app.job_queue.run_daily(send_hard_topic_analytics, dt_time(22,11, tzinfo=IST), days=SUNDAY)
-    app.job_queue.run_daily(send_ai_motivation,        dt_time(22,12, tzinfo=IST), days=SUNDAY)
-    app.job_queue.run_daily(monthly_checker,           dt_time(22,13, tzinfo=IST), days=SUNDAY)
-    app.job_queue.run_daily(send_monthly_graph,        dt_time(22,14, tzinfo=IST), days=SUNDAY)
-    app.job_queue.run_daily(send_month_comparison,     dt_time(22,15, tzinfo=IST), days=SUNDAY)
+    app.job_queue.run_daily(
+    monday_bundle,
+    dt_time(20, 52, tzinfo=IST), 
+    days=(6,), 
+    )
