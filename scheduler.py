@@ -18,12 +18,29 @@ from telegram.ext import (
 )
 from reports import register_reports
 from config import WORD_FILE, CHAT_ID, IST,BOT_TOKEN
-import os
-print("DATA EXISTS:", os.path.exists("/data"))
-print("DATA FILES:", os.listdir("/data"))
+from drive import upload_to_drive
+import shutil
+if not os.path.exists(WORD_FILE):
+    shutil.copy("placepment_plan.docx", WORD_FILE)
+    print("📄 Word file copied to volume")
+import time
 START_DATE = "2026-01-12"
 evening_RETRY_JOB = "evening_retry"
 HARD_TOPIC_TIMEOUT_JOB = "hard_topic_timeout"
+
+def upload_with_retry(local_file, filename, retries=3, delay=2):
+    for attempt in range(1, retries + 1):
+        success = upload_to_drive(local_file, filename)
+        if success:
+            print(f"☁️ Drive sync successful (attempt {attempt})")
+            return True
+
+        print(f"⚠️ Drive sync failed (attempt {attempt}/{retries})")
+        if attempt < retries:
+            time.sleep(delay)
+
+    print("❌ Drive sync failed after all retries")
+    return False
 
 # ===== HELPERS =====
 def get_day_number():
@@ -60,6 +77,11 @@ def update_status_in_word(symbol):
 
     table.rows[row].cells[status_col].text = symbol
     doc.save(WORD_FILE)
+    upload_to_drive(WORD_FILE, "placepment_plan.docx")
+    success = upload_to_drive(WORD_FILE, "placepment_plan.docx")
+    if not success:
+        print("⚠️ Local Word updated, but Drive sync failed after retries")
+
     print(f"✅ Status updated: Day {day}")
 # ===== evening =====
 async def evening_buttons(context: ContextTypes.DEFAULT_TYPE):
@@ -163,7 +185,10 @@ async def hard_topic_timeout(context: ContextTypes.DEFAULT_TYPE):
     if hard_col is not None and row < len(table.rows):
         table.rows[row].cells[hard_col].text = "None"
         doc.save(WORD_FILE)
-
+        upload_to_drive(WORD_FILE, "placepment_plan.docx")
+        success = upload_to_drive(WORD_FILE, "placepment_plan.docx")
+        if not success:
+            print("⚠️ Local Word updated, but Drive sync failed after retries")
     context.user_data["awaiting_hard_topic"] = False
 
     await context.bot.send_message(
@@ -195,6 +220,10 @@ async def hard_topic_handler(update: Update, context: ContextTypes.DEFAULT_TYPE)
     if hard_col is not None and row < len(table.rows):
         table.rows[row].cells[hard_col].text = topic
         doc.save(WORD_FILE)
+        upload_to_drive(WORD_FILE, "placepment_plan.docx")
+        success = upload_to_drive(WORD_FILE, "placepment_plan.docx")
+        if not success:
+            print("⚠️ Local Word updated, but Drive sync failed after retries")
 
     context.user_data["awaiting_hard_topic"] = False
     await update.message.reply_text("📝 Hard topic saved successfully ✅")
