@@ -18,7 +18,9 @@ from telegram.ext import (
 )
 from reports import register_reports
 from config import WORD_FILE, CHAT_ID, IST,BOT_TOKEN
-
+import os
+print("DATA EXISTS:", os.path.exists("/data"))
+print("DATA FILES:", os.listdir("/data"))
 START_DATE = "2026-01-12"
 evening_RETRY_JOB = "evening_retry"
 HARD_TOPIC_TIMEOUT_JOB = "hard_topic_timeout"

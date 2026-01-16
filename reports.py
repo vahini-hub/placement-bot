@@ -7,15 +7,24 @@ from reportlab.lib.units import cm
 from telegram import Update
 from telegram.ext import ContextTypes, CommandHandler
 from config import WORD_FILE, CHAT_ID, IST
+import matplotlib
+matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from collections import Counter
-
+import os
+async def cleanup(send_coro, file_path):
+    try:
+        await send_coro
+    finally:
+        if file_path and os.path.exists(file_path):
+            os.remove(file_path)
 def job_wrapper(async_func):
     async def wrapped(context):
         try:
             await async_func(context)
         except Exception as e:
-            pass
+            print("❌ REPORT JOB FAILED:", e)
+            raise
     return wrapped
 # ================= INTERNAL HELPERS
 def _get_table():
@@ -33,41 +42,40 @@ def _get_table():
                 return table, headers
 
     raise ValueError("Required table not found")
-
 def _get_all_rows():
-    doc = Document(WORD_FILE)
-    all_rows = []
+        doc = Document(WORD_FILE)
+        all_rows = []
 
-    REQUIRED = {"date", "status", "hard topic", "c topic", "java topic"}
+        REQUIRED = {"date", "status", "hard topic", "c topic", "java topic"}
 
-    for table in doc.tables:
-        headers = None
-        header_idx = None
+        for table in doc.tables:
+            headers = None
+            header_idx = None
 
-        for i, row in enumerate(table.rows):
-            cells = [c.text.strip().lower() for c in row.cells if c.text.strip()]
-            if REQUIRED.issubset(set(cells)):
-                headers = {
-                    c.text.strip().lower(): idx
-                    for idx, c in enumerate(row.cells)
-                    if c.text.strip()
-                }
-                header_idx = i
-                break
+            for i, row in enumerate(table.rows):
+                cells = [c.text.strip().lower() for c in row.cells if c.text.strip()]
+                if REQUIRED.issubset(set(cells)):
+                    headers = {
+                        c.text.strip().lower(): idx
+                        for idx, c in enumerate(row.cells)
+                        if c.text.strip()
+                    }
+                    header_idx = i
+                    break
 
-        if not headers:
-            continue
-
-        for row in table.rows[header_idx + 1:]:
-            # skip empty rows
-            if not row.cells[headers["date"]].text.strip():
+            if not headers:
                 continue
-            all_rows.append((row, headers))
 
-    if not all_rows:
-        raise ValueError("No tables with required columns found.")
+            for row in table.rows[header_idx + 1:]:
+                # skip empty rows
+                if not row.cells[headers["date"]].text.strip():
+                    continue
+                all_rows.append((row, headers))
 
-    return all_rows
+        if not all_rows:
+            raise ValueError("No tables with required columns found.")
+
+        return all_rows
 
 def _parse_date(row, headers):
     text = row.cells[headers["date"]].text
@@ -89,7 +97,7 @@ def _parse_date(row, headers):
 # ================= PDF CORE =================
 def generate_pdf(start_date, end_date, title):
     all_rows = _get_all_rows()
-    pdf_path = f"{title.replace(' ', '_')}.pdf"
+    pdf_path = os.path.join("/tmp", f"{title.replace(' ', '_')}.pdf")
     c = canvas.Canvas(pdf_path, pagesize=A4)
     width, height = A4
 
@@ -172,9 +180,8 @@ async def send_weekly_report(context):
     today = datetime.now(IST).date()
     start = today - timedelta(days=6)
     pdf = generate_pdf(start, today, "Weekly Study Report")
-    await context.bot.send_document(chat_id=CHAT_ID, document=open(pdf, "rb"))
-
-
+    with open(pdf,"rb") as f:
+        await cleanup(context.bot.send_document(chat_id=CHAT_ID, document=f),pdf)
 # ================= MONTHLY PDF =================
 async def send_monthly_report(context):
     today = datetime.now(IST).date()
@@ -187,8 +194,8 @@ async def send_monthly_report(context):
         last_end,
         f"Monthly Report {last_start.strftime('%B %Y')}",
     )
-    await context.bot.send_document(chat_id=CHAT_ID, document=open(pdf, "rb"))
-
+    with open(pdf,"rb") as f:
+        await cleanup(context.bot.send_document(chat_id=CHAT_ID, document=f),pdf)
 
 async def monthly_checker(context):
     if (datetime.now(IST).date() + timedelta(days=1)).day == 1:
@@ -235,18 +242,21 @@ async def send_sunday_summary(context):
 async def _plot_and_send(x, y, title, file, caption, context):
     plt.figure()
     plt.plot(x, y, marker="o")
-    plt.yticks([0, 1], ["❌", "✅"])
+    plt.yticks([0, 1], ["Miss", "Done"])
     plt.title(title)
     plt.grid(True)
-    plt.savefig(file)
+    file_path = os.path.join("/tmp", file)
+    plt.savefig(file_path)
     plt.close()
-
-    await context.bot.send_photo(
-    chat_id=CHAT_ID,
-    photo=open(file, "rb"),
-    caption=caption
-    )
-
+    with open(file_path,"rb") as f:
+        await cleanup (
+            context.bot.send_photo(
+            chat_id=CHAT_ID,
+            photo=f,
+            caption=caption
+            ),
+        file_path
+        )
 async def send_weekly_graph(context):
     today = datetime.now(IST).date()
     start = today - timedelta(days=6)
@@ -453,10 +463,17 @@ async def send_ai_motivation(context):
 
 # ================= COMMAND =================
 async def report_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    start = datetime.strptime(context.args[0], "%Y-%m-%d").date()
-    end = datetime.strptime(context.args[1], "%Y-%m-%d").date()
+    try:
+        start = datetime.strptime(context.args[0], "%Y-%m-%d").date()
+        end = datetime.strptime(context.args[1], "%Y-%m-%d").date()
+    except(IndexError, ValueError):
+        await update.message.reply_text(
+            "❌ Invalid command usage. Use /report YYYY-MM-DD YYYY-MM-DD"
+        )
+        return
     pdf = generate_pdf(start, end, f"Study Report {start} to {end}")
-    await update.message.reply_document(open(pdf, "rb"))
+    with open(pdf, "rb") as f:
+        await cleanup(update.message.reply_document(f),pdf)
 
 # ================= TUESDAY MANUAL WEEKLY =================
 async def manual_weekly_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
