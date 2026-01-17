@@ -1,67 +1,51 @@
 import os
-from google.auth.transport.requests import Request
-from google.oauth2.credentials import Credentials
+import json
+import time
 from googleapiclient.discovery import build
 from googleapiclient.http import MediaFileUpload
+from google.oauth2.credentials import Credentials
 from googleapiclient.errors import HttpError
 
 SCOPES = ["https://www.googleapis.com/auth/drive.file"]
-TOKEN_FILE = os.environ.get("TOKEN_JSON")
-FOLDER_ID = os.getenv("DRIVE_FOLDER_ID")        # optional
-DRIVE_FILE_ID = os.getenv("DRIVE_FILE_ID")      # REQUIRED after first upload
-
 
 def get_drive_service():
-    if not TOKEN_FILE or not os.path.exists(TOKEN_FILE):
-        raise RuntimeError(
-            f"token.json not found. TOKEN_JSON={TOKEN_FILE}"
-        )
+    token_info = json.loads(os.environ["TOKEN_JSON"])
+    creds = Credentials.from_authorized_user_info(token_info, SCOPES)
+    return build("drive", "v3", credentials=creds)
 
-    creds = Credentials.from_authorized_user_file(TOKEN_FILE, SCOPES)
+def upload_to_drive(local_path, filename, retries=3):
+    for attempt in range(1, retries + 1):
+        try:
+            service = get_drive_service()
 
-    if creds.expired and creds.refresh_token:
-        creds.refresh(Request())
-        with open(TOKEN_FILE, "w") as f:
-            f.write(creds.to_json())
-
-    return build("drive", "v3", credentials=creds, cache_discovery=False)
-
-
-def upload_to_drive(local_file, filename):
-    try:
-        service = get_drive_service()
-        media = MediaFileUpload(local_file, resumable=True)
-
-        # 🔁 UPDATE EXISTING FILE (NORMAL MODE)
-        if DRIVE_FILE_ID:
-            service.files().update(
-                fileId=DRIVE_FILE_ID,
-                media_body=media,
+            results = service.files().list(
+                q=f"name='{filename}' and trashed=false",
+                fields="files(id)"
             ).execute()
-            print("☁️ Drive file updated")
+
+            media = MediaFileUpload(
+                local_path,
+                mimetype="application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+            )
+
+            if results["files"]:
+                service.files().update(
+                    fileId=results["files"][0]["id"],
+                    media_body=media
+                ).execute()
+            else:
+                service.files().create(
+                    body={"name": filename},
+                    media_body=media
+                ).execute()
+
+            print("✅ Drive sync successful")
             return True
 
-        # ⬆️ FIRST UPLOAD ONLY (RUNS ONCE)
-        metadata = {"name": filename}
-        if FOLDER_ID:
-            metadata["parents"] = [FOLDER_ID]
+        except HttpError as e:
+            print(f"⚠️ Drive sync failed (attempt {attempt}/{retries})")
+            print(e)
+            time.sleep(2)
 
-        file = service.files().create(
-            body=metadata,
-            media_body=media,
-            fields="id",
-        ).execute()
-
-        print("☁️ Drive file created")
-        print("🟡 SET THIS ENV VAR:")
-        print(f"DRIVE_FILE_ID={file['id']}")
-
-        return True
-
-    except HttpError as e:
-        print(f"❌ DRIVE ERROR: {e}")
-        return False
-
-    except Exception as e:
-        print(f"❌ UNEXPECTED ERROR: {e}")
-        return False
+    print("❌ Drive sync failed after all retries")
+    return False
