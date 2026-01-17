@@ -255,12 +255,12 @@ register_reports(app)
 ALL_DAYS = (0, 1, 2, 3, 4, 5, 6)
 app.job_queue.run_daily(
     evening_buttons,
-    time=dt_time(hour=13, minute=40, tzinfo=IST),
+    time=dt_time(hour=13, minute=44, tzinfo=IST),
     days=ALL_DAYS
 )
 app.job_queue.run_daily(
     night_buttons,
-    time=dt_time(hour=13, minute=42, tzinfo=IST),
+    time=dt_time(hour=13, minute=46, tzinfo=IST),
     days=ALL_DAYS
 )
 # ================= START =================
