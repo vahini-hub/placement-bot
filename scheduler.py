@@ -88,6 +88,7 @@ def validate_word_structure():
     missing = REQUIRED_COLUMNS - headers
     if missing:
         raise RuntimeError(f"Missing required columns: {missing}")
+LAST_UPLOAD_TS=0
 # ================= HELPERS =================
 def upload_with_retry(local_file, filename, retries=3, delay=2):
     global LAST_UPLOAD_TS
@@ -262,12 +263,12 @@ register_reports(app)
 ALL_DAYS = (0, 1, 2, 3, 4, 5, 6)
 app.job_queue.run_daily(
     evening_buttons,
-    time=dt_time(hour=17, minute=35, tzinfo=IST),
+    time=dt_time(hour=17, minute=43, tzinfo=IST),
     days=ALL_DAYS
 )
 app.job_queue.run_daily(
     night_buttons,
-    time=dt_time(hour=17, minute=37, tzinfo=IST),
+    time=dt_time(hour=17, minute=45, tzinfo=IST),
     days=ALL_DAYS
 )
 # ================= START =================
