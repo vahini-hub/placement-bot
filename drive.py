@@ -6,8 +6,7 @@ from googleapiclient.http import MediaFileUpload
 from googleapiclient.errors import HttpError
 
 SCOPES = ["https://www.googleapis.com/auth/drive.file"]
-TOKEN_FILE = "token.json"
-
+TOKEN_FILE = os.environ.get("TOKEN_JSON_PATH", "/app/token.json")
 FOLDER_ID = os.getenv("DRIVE_FOLDER_ID")        # optional
 DRIVE_FILE_ID = os.getenv("DRIVE_FILE_ID")      # REQUIRED after first upload
 
