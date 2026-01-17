@@ -3,3 +3,7 @@
 __pycache__/
 *.pdf
 *.png 
+token.json
+credentials.json
+*.json
+drive auth.py

@@ -40,6 +40,7 @@ logging.basicConfig(
 logging.getLogger("httpx").setLevel(logging.WARNING)
 logging.getLogger("apscheduler").setLevel(logging.WARNING)
 logging.getLogger("telegram").setLevel(logging.WARNING)
+
 # ================= CONSTANTS =================
 START_DATE = "2026-01-12"
 STATE_FILE = "bot_state.json"
@@ -89,6 +90,11 @@ def validate_word_structure():
         raise RuntimeError(f"Missing required columns: {missing}")
 # ================= HELPERS =================
 def upload_with_retry(local_file, filename, retries=3, delay=2):
+    global LAST_UPLOAD_TS
+    now=time.time()
+    if now-LAST_UPLOAD_TS < 60:
+        logging.info("skipping drive upload(recently synced)")
+        return True
     for attempt in range(1, retries + 1):
         if upload_to_drive(local_file, filename):
             logging.info("Drive sync successful (attempt %s)", attempt)
