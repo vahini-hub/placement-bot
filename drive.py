@@ -6,15 +6,15 @@ from googleapiclient.http import MediaFileUpload
 from googleapiclient.errors import HttpError
 
 SCOPES = ["https://www.googleapis.com/auth/drive.file"]
-TOKEN_FILE = os.environ.get("TOKEN_JSON_PATH", "/app/token.json")
+TOKEN_FILE = os.environ.get("TOKEN_JSON")
 FOLDER_ID = os.getenv("DRIVE_FOLDER_ID")        # optional
 DRIVE_FILE_ID = os.getenv("DRIVE_FILE_ID")      # REQUIRED after first upload
 
 
 def get_drive_service():
-    if not os.path.exists(TOKEN_FILE):
+    if not TOKEN_FILE or not os.path.exists(TOKEN_FILE):
         raise RuntimeError(
-            "token.json not found. Generate it locally and upload to Railway."
+            f"token.json not found. TOKEN_JSON={TOKEN_FILE}"
         )
 
     creds = Credentials.from_authorized_user_file(TOKEN_FILE, SCOPES)
