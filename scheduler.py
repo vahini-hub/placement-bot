@@ -14,6 +14,7 @@ import json
 import shutil
 import logging
 import warnings
+import sys
 from datetime import datetime, time as dt_time
 from docx import Document
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
@@ -255,12 +256,12 @@ register_reports(app)
 ALL_DAYS = (0, 1, 2, 3, 4, 5, 6)
 app.job_queue.run_daily(
     evening_buttons,
-    time=dt_time(hour=13, minute=44, tzinfo=IST),
+    time=dt_time(hour=13, minute=49, tzinfo=IST),
     days=ALL_DAYS
 )
 app.job_queue.run_daily(
     night_buttons,
-    time=dt_time(hour=13, minute=46, tzinfo=IST),
+    time=dt_time(hour=13, minute=51, tzinfo=IST),
     days=ALL_DAYS
 )
 # ================= START =================
